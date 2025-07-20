@@ -131,9 +131,6 @@ def sub_f192(self, other):
         ret[4] ^= self[4]%2
         ret[4] |= (self[4] & ti.u32(0xfffffffe)) | (other[4] & ti.u32(0xfffffffe))
         ret[5] = self[5]
-        
-        # print(ret)
-        # print(normalize(ret))
     
     ret = normalize(ret)
     return ret
@@ -188,19 +185,13 @@ def f192_to_f32(a: ti.types.vector(6, ti.u32)):
 def div_f192(self, other):
     zero = ti.Vector([0]*6, ti.u32)
     ret = ti.Vector([0]*6, ti.u32)
-    # tmp1 = ti.Vector([0]*6, ti.u32)
-    # tmp2 = ti.Vector([0]*6, ti.u32)
-    # tmp3 = ti.Vector([0]*6, ti.u32)
     
     if not m.eq_u128(other, zero):
         o_inv = f32_to_f192(1/f192_to_f32(other))
         two = normalize(ti.Vector([2,0,0,0,0,ti.u32(0x80000000)], ti.u32))
-        # print(f192_to_f32(two))
-        # print(two)
         
         ti.loop_config(serialize=True)
         for i in range(7):
-            # print(f192_to_f32(o_inv), f192_to_f32(mul_f192(other, o_inv)), f192_to_f32(sub_f192(two, mul_f192(other, o_inv))), f192_to_f32(mul_f192(o_inv, sub_f192(two, mul_f192(other, o_inv)))))
             o_inv = mul_f192(o_inv, sub_f192(two, mul_f192(other, o_inv)))
         
         ret = mul_f192(self, o_inv)
@@ -219,31 +210,12 @@ if __name__ == '__main__':
     
     @ti.kernel
     def test_f192():
-        # two = normalize(ti.Vector([2,0,0,0,0,ti.u32(0x80000000)], ti.u32))
-        # one = ti.Vector([0, 0, ti.u32(2021654528), ti.u32(4294967182), 0, ti.u32(2147483520)], ti.u32)
-        # two, one = equalize_exp(two, one)
-        # print(two, one, m.neg_u128(one))
-        # print(f192_to_f32(sub_f192(two, one)))
         a = f32_to_f192(-289.80362)
         b = f32_to_f192(-64.00007)
-        # o_inv = ti.Vector([ti.u32(4294966532), ti.u32(2617298183), 10616820, ti.u32(2147481344), 1, ti.u32(2147483515)], ti.u32)
-        # print(b, o_inv, f192_to_f32(mul_f192(b, o_inv)))
-        # print(mul_f192(b, o_inv))
-        # print(m.mul_full_u128(b, o_inv))
         
-        # s = sub_f192(a, b)
         p = div_f192(a, b)
-        # print(s)
         print(p)
-        
-        # fs = f192_to_f32(s)
         fp = f192_to_f32(p)
-        
-        # print(fs)  # Expected ≈ -0.75
-        print(fp)  # Expected ≈ -3.375
-        
-        # Optional: Check error flags
-        # print("Add flags:", s[4])
-        # print("Mul flags:", p[4])
+        print(fp)
     
     test_f192()
