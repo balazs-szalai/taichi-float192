@@ -73,6 +73,14 @@ Implements basic arithmetic operations:
 
 Other operations (e.g., comparisons, trigonometric functions) are **not implemented**.
 
+### `ast_transformer.py`
+
+Implements a simple type annotator and BinOpTransformer for swapping binary operators like:
+
+```
+a+b -> float192.add_f192(a, b)
+```
+
 ---
 
 ## Performance & Extendability
