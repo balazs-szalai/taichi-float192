@@ -7,9 +7,6 @@ Created on Sat Jun 28 20:27:53 2025
 
 import taichi as ti
 
-class U128:
-    pass
-
 @ti.func 
 def add_with_carry(a: ti.u32,
                    b: ti.u32,
@@ -63,14 +60,11 @@ def neg_u128(a: ti.types.vector(6, ti.u32)):
     
     for i in range(4):
         result[i] = ti.u32(0xffffffff)-a[i]
-    # print(result)
     k = 0
     carry = ti.u32(1)
     while carry:
         temp = result[k]
-        # print(temp, carry)
         temp, carry = add_with_carry(temp, carry, 0)
-        # print(temp, carry)
         result[k] = temp
         k += 1
     return result
@@ -118,9 +112,8 @@ def mul_u128_u16impl(a: ti.types.vector(8, ti.u16),
     hi = ti.Vector([0]*8, ti.u16)
     lo = ti.Vector([0]*8, ti.u16)
     
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for i in range(8):
-        # ti.loop_config(serialize=True)
         for j in range(8):
             tmp = ti.u32(ti.u32(a[i])*ti.u32(b[j]))
             high = tmp >> 16
@@ -207,16 +200,12 @@ def mul_u128_hi(a: ti.types.vector(6, ti.u32),
     
     if shift_limb < 4:
         shift_bit = 31-log2_u32(hi[3-shift_limb])
-        # print(shift_limb, shift_bit)
         
-        # print(hi)
         hi = bit_shift_up_simple(hi, shift_bit)
-        # print(hi)
+        
         hi[0] |= lo[3] >> (32-shift_bit)
-        # lo = bit_shift_up_simple(lo, shift_bit)
         
         hi = limb_shift_up(hi, shift_limb)
-        # print(hi)
         for i in range(shift_limb):
             hi[i] = lo[4-shift_limb+i]
     else:
