@@ -24,13 +24,13 @@ It consists of:
 
 ## Architecture and Usage
 
-The main design goal was to make `f192_t` accessible within the Taichi environment using only 32-bit types. This avoids relying on `uint64`, which can cause backend issues (especially under Vulkan).
+The main design goal was to make `f192_t` accessible within the Taichi environment using only 32-bit types. This avoids relying on `uint64`, which can cause backend issues (especially under Vulkan). Vulkan support was the main goal for also having AOT support but Vulkan backend throws obscure errors.
 
 ### Compatibility
 
-* ✅ `ti.cpu`
-* ✅ `ti.cuda`
-* ⚠️ Vulkan backend will throw unexplained errors, I believe this is a taichi error since syntactically it should work.
+* `ti.cpu`
+* `ti.cuda`
+* Vulkan backend will throw unexplained errors, I believe this is a taichi error since syntactically it should work.
 
 ### Type Usage
 
