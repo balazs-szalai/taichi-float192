@@ -56,8 +56,7 @@ The `supports_f192` decorator handles operator replacement. It:
 
 ### `mantissa128.py`
 
-Implements a 128-bit unsigned integer type used for the mantissa of `f192_t`.
-⚠️ **Not intended for direct use**, as:
+Implements a 128-bit unsigned integer type used for the mantissa of `f192_t`. **Not intended for direct use**, as:
 
 * It lacks its own operator-swapping decorator.
 * It assumes 192-bit float structure and avoids touching the last two limbs (sign and exponent).
