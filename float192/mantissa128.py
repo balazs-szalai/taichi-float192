@@ -7,19 +7,22 @@ Created on Sat Jun 28 20:27:53 2025
 
 import taichi as ti
 
-@ti.func 
+vec_6 = ti.types.vector(6, ti.u32)
+vec_8 = ti.types.vector(8, ti.u16)
+
+@ti.real_func 
 def add_with_carry(a: ti.u32,
                    b: ti.u32,
-                   carry_in: ti.u32):
+                   carry_in: ti.u32) -> [ti.u32, ti.u32]:
     temp = ti.u32(a+b)
     result = temp + carry_in
     carry_out = ti.u32((temp < a) or (result < temp))
     
-    return result, carry_out
+    return [result, carry_out]
 
-@ti.func 
+@ti.real_func 
 def add_full_u128(a: ti.types.vector(6, ti.u32),
-                        b: ti.types.vector(6, ti.u32)):
+                  b: ti.types.vector(6, ti.u32)) -> [vec_6, ti.u32]:
     
     result = ti.Vector([0]*6, ti.u32)
     
@@ -28,19 +31,23 @@ def add_full_u128(a: ti.types.vector(6, ti.u32),
     for i in range(4):
         x = a[i]
         y = b[i]
-        sum_, new_carry = add_with_carry(x, y, carry)
+        tmp = add_with_carry(x, y, carry)
+        sum_ = tmp[0]
+        new_carry = tmp[1]
         result[i] = sum_
         carry = new_carry
     
-    return result, carry
+    return [result, carry]
 
-@ti.func 
+@ti.real_func 
 def add_u128_hi(a: ti.types.vector(6, ti.u32),
-                b: ti.types.vector(6, ti.u32)):
+                b: ti.types.vector(6, ti.u32)) -> [vec_6, ti.i32]:
     result = ti.Vector([0]*6, ti.u32)
     overflow = False
     
-    res, carry = add_full_u128(a, b)
+    tmp = add_full_u128(a, b)
+    res = tmp[0]
+    carry = tmp[1]
     
     if carry:
         overflow = True
@@ -51,27 +58,30 @@ def add_u128_hi(a: ti.types.vector(6, ti.u32),
         for i in range(4):
             result[i] = res[i]
     
-    return result, overflow
+    return [result, overflow]
 
 
-@ti.func 
-def neg_u128(a: ti.types.vector(6, ti.u32)):
+@ti.real_func 
+def neg_u128(a: ti.types.vector(6, ti.u32)) -> vec_6:
     result = ti.Vector([0]*6, ti.u32)
     
     for i in range(4):
         result[i] = ti.u32(0xffffffff)-a[i]
+    # print(result)
     k = 0
     carry = ti.u32(1)
     while carry:
         temp = result[k]
+        # print(temp, carry)
         temp, carry = add_with_carry(temp, carry, 0)
+        # print(temp, carry)
         result[k] = temp
         k += 1
     return result
 
-@ti.func 
+@ti.real_func 
 def sub_u128(a: ti.types.vector(6, ti.u32),
-             b: ti.types.vector(6, ti.u32)):
+             b: ti.types.vector(6, ti.u32)) -> vec_6:
     
     res, carry  = add_full_u128(a, neg_u128(b))
     ret = res
@@ -80,8 +90,8 @@ def sub_u128(a: ti.types.vector(6, ti.u32),
         ret = neg_u128(res)
     return ret
 
-@ti.func 
-def from_u32_to_u16(a: ti.types.vector(6, ti.u32)):
+@ti.real_func 
+def from_u32_to_u16(a: ti.types.vector(6, ti.u32)) -> vec_8:
     ret = ti.Vector([0]*8, ti.u16)
     
     for i in range(4):
@@ -93,8 +103,8 @@ def from_u32_to_u16(a: ti.types.vector(6, ti.u32)):
     
     return ret
 
-@ti.func 
-def from_u16_to_u32(a: ti.types.vector(8, ti.u16)):
+@ti.real_func 
+def from_u16_to_u32(a: ti.types.vector(8, ti.u16)) -> vec_6:
     ret = ti.Vector([0]*6, ti.u32)
     
     for i in range(4):
@@ -105,15 +115,16 @@ def from_u16_to_u32(a: ti.types.vector(8, ti.u16)):
     
     return ret
 
-@ti.func 
+@ti.real_func 
 def mul_u128_u16impl(a: ti.types.vector(8, ti.u16),
-                     b: ti.types.vector(8, ti.u16)):
+                     b: ti.types.vector(8, ti.u16)) -> (vec_8, vec_8):
     result = ti.Vector([0]*16, ti.u16)
     hi = ti.Vector([0]*8, ti.u16)
     lo = ti.Vector([0]*8, ti.u16)
     
     ti.loop_config(serialize=True)
     for i in range(8):
+        # ti.loop_config(serialize=True)
         for j in range(8):
             tmp = ti.u32(ti.u32(a[i])*ti.u32(b[j]))
             high = tmp >> 16
@@ -143,9 +154,9 @@ def mul_u128_u16impl(a: ti.types.vector(8, ti.u16),
     
     return hi, lo
 
-@ti.func 
+@ti.real_func 
 def mul_full_u128(a: ti.types.vector(6, ti.u32),
-                  b: ti.types.vector(6, ti.u32)):
+                  b: ti.types.vector(6, ti.u32)) -> (vec_6, vec_6):
     
     a16 = from_u32_to_u16(a)
     b16 = from_u32_to_u16(b)
@@ -157,18 +168,18 @@ def mul_full_u128(a: ti.types.vector(6, ti.u32),
     
     return hi, lo
 
-@ti.func 
+@ti.real_func 
 def mul_u128_lo(a: ti.types.vector(6, ti.u32),
-                b: ti.types.vector(6, ti.u32)):
+                b: ti.types.vector(6, ti.u32)) -> vec_6:
     
     return mul_full_u128(a, b)[1]
 
-@ti.func 
-def leading_zero_limbs(a: ti.types.vector(6, ti.u32)) -> int:
+@ti.real_func 
+def leading_zero_limbs(a: ti.types.vector(6, ti.u32)) -> ti.i32:
     ret = 0
     flag = True 
     
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for j in range(4):
         i = 3-j
         if a[i] == 0 and flag:
@@ -177,7 +188,7 @@ def leading_zero_limbs(a: ti.types.vector(6, ti.u32)) -> int:
             flag = False
     return ret
 
-@ti.func
+@ti.real_func
 def log2_u32(x: ti.u32) -> ti.i32:
     low = 0
     high = 31
@@ -190,9 +201,9 @@ def log2_u32(x: ti.u32) -> ti.i32:
             low = mid + 1
     return high
 
-@ti.func 
+@ti.real_func 
 def mul_u128_hi(a: ti.types.vector(6, ti.u32),
-             b: ti.types.vector(6, ti.u32)):
+                b: ti.types.vector(6, ti.u32)) -> [vec_6, ti.i32]:
     hi, lo = mul_full_u128(a, b)
     # print(hi, lo)
     shift_limb = leading_zero_limbs(hi)
@@ -200,12 +211,16 @@ def mul_u128_hi(a: ti.types.vector(6, ti.u32),
     
     if shift_limb < 4:
         shift_bit = 31-log2_u32(hi[3-shift_limb])
+        # print(shift_limb, shift_bit)
         
+        # print(hi)
         hi = bit_shift_up_simple(hi, shift_bit)
-        
+        # print(hi)
         hi[0] |= lo[3] >> (32-shift_bit)
+        # lo = bit_shift_up_simple(lo, shift_bit)
         
         hi = limb_shift_up(hi, shift_limb)
+        # print(hi)
         for i in range(shift_limb):
             hi[i] = lo[4-shift_limb+i]
     else:
@@ -215,10 +230,10 @@ def mul_u128_hi(a: ti.types.vector(6, ti.u32),
         hi = bit_shift_up_simple(lo, shift_bit)
         hi = limb_shift_up(hi, shift_limb)
     
-    return hi, 128-shift_limb*32-shift_bit
+    return [hi, 128-shift_limb*32-shift_bit]
 
-@ti.func 
-def bit_shift_up_simple(a: ti.types.vector(6, ti.u32), shift: int):
+@ti.real_func 
+def bit_shift_up_simple(a: ti.types.vector(6, ti.u32), shift: ti.u32) -> vec_6:
     result = ti.Vector([0]*6, ti.u32)
     if shift > 0:
         result = ti.Vector([0]*6, ti.u32)
@@ -233,15 +248,15 @@ def bit_shift_up_simple(a: ti.types.vector(6, ti.u32), shift: int):
         result = ti.Vector([a[i] for i in range(6)], ti.u32)
     return result
 
-@ti.func 
-def limb_shift_up(a: ti.types.vector(6, ti.u32), n: int):
+@ti.real_func 
+def limb_shift_up(a: ti.types.vector(6, ti.u32), n: ti.int32) -> vec_6:
     result = ti.Vector([0]*6, ti.u32)
     for i in range(4-n):
         result[i+n] = a[i]
     return result
 
-@ti.func
-def bit_shift_up_u128(a: ti.types.vector(6, ti.u32), shift: int):
+@ti.real_func
+def bit_shift_up_u128(a: ti.types.vector(6, ti.u32), shift: ti.int32) -> vec_6:
     n = shift//32 
     shift %= 32 
     result = ti.Vector([a[i] for i in range(4)])
@@ -254,12 +269,12 @@ def bit_shift_up_u128(a: ti.types.vector(6, ti.u32), shift: int):
     return  result
 
 
-@ti.func 
-def bit_shift_down_simple(a: ti.types.vector(6, ti.u32), shift: int):
+@ti.real_func 
+def bit_shift_down_simple(a: ti.types.vector(6, ti.u32), shift: ti.int32) -> vec_6:
     result = ti.Vector([0]*6, ti.u32)
     high, low = ti.u32(0), ti.u32(0)
     
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for j in range(4):
         i = 3-j
         
@@ -269,8 +284,8 @@ def bit_shift_down_simple(a: ti.types.vector(6, ti.u32), shift: int):
         result[i] = low
     return result
 
-@ti.func 
-def limb_shift_down(a: ti.types.vector(6, ti.u32), n: int):
+@ti.real_func 
+def limb_shift_down(a: ti.types.vector(6, ti.u32), n: ti.int32) -> vec_6:
     result = ti.Vector([0]*6, ti.u32)
     for j in range(4-n):
         i = 3-j
@@ -278,10 +293,10 @@ def limb_shift_down(a: ti.types.vector(6, ti.u32), n: int):
         result[i-n] = a[i]
     return result
 
-@ti.func
-def bit_shift_down_u128(a: ti.types.vector(6, ti.u32), shift: int):
-    n = shift//32 
-    shift %= 32 
+@ti.real_func
+def bit_shift_down_u128(a: ti.types.vector(6, ti.u32), shift0: ti.i32) -> vec_6:
+    n = shift0//32 
+    shift = shift0%32 
     
     result = ti.Vector([a[i] for i in range(6)])
     if shift:
@@ -292,10 +307,11 @@ def bit_shift_down_u128(a: ti.types.vector(6, ti.u32), shift: int):
     
     return  result
 
-@ti.func
+@ti.real_func
 def cmp_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)) -> ti.i32:
     ret = 0
     
+    ti.loop_config(serialize=True)
     for j in range(4):
         i = 3-j
         if not ret:
@@ -305,25 +321,25 @@ def cmp_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)) -> ti
                 ret = 1
     return ret
 
-@ti.func
-def lt_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)):
+@ti.real_func
+def lt_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)) -> ti.i32:
     return cmp_u128(a, b) == -1
-@ti.func
-def gt_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)):
+@ti.real_func
+def gt_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)) -> ti.i32:
     return cmp_u128(a, b) == 1
-@ti.func
-def eq_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)):
+@ti.real_func
+def eq_u128(a: ti.types.vector(6, ti.u32), b: ti.types.vector(6, ti.u32)) -> ti.i32:
     return cmp_u128(a, b) == 0
 
-@ti.func 
-def u128():
+@ti.real_func 
+def u128() -> vec_6:
     return ti.Vector([0]*6, ti.u32)
 
-@ti.func 
-def leading_zero_limbs_u16impl(a: ti.types.vector(10, ti.u16)) -> int:
+@ti.real_func 
+def leading_zero_limbs_u16impl(a: ti.types.vector(10, ti.u16)) -> ti.i32:
     ret = 0
     flag = True 
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for j in range(10):
         i = 9-j
         if a[i] == 0 and flag:
@@ -332,24 +348,24 @@ def leading_zero_limbs_u16impl(a: ti.types.vector(10, ti.u16)) -> int:
             flag = False
     return ret
 
-@ti.func 
-def bit_shift_up_simple_u16impl(a: ti.types.vector(10, ti.u16), shift: int):
+@ti.real_func 
+def bit_shift_up_simple_u16impl(a: ti.types.vector(10, ti.u16), shift: ti.i32) -> ti.types.vector(10, ti.u16):
     result = ti.Vector([0]*10, ti.u16)
     high, low = ti.u16(0), ti.u16(0)
     
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for i in range(10):
         low = (a[i] << shift) | high
         high = a[i] >> (16-shift)
         result[i] = low
     return result
 
-@ti.func 
-def bit_shift_down_simple_u16impl(a: ti.types.vector(10, ti.u16), shift: int):
+@ti.real_func 
+def bit_shift_down_simple_u16impl(a: ti.types.vector(10, ti.u16), shift: ti.i32) -> ti.types.vector(10, ti.u16):
     result = ti.Vector([0]*10, ti.u16)
     high, low = ti.u16(0), ti.u16(0)
     
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for j in range(10):
         i = 9-j
         
@@ -359,11 +375,11 @@ def bit_shift_down_simple_u16impl(a: ti.types.vector(10, ti.u16), shift: int):
         result[i] = low
     return result
 
-@ti.func
+@ti.real_func
 def cmp_u128_u16impl(a: ti.types.vector(10, ti.u16), b: ti.types.vector(10, ti.u16)) -> ti.i32:
     ret = 0
     
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for j in range(10):
         i = 9-j
         if not ret:
@@ -373,12 +389,12 @@ def cmp_u128_u16impl(a: ti.types.vector(10, ti.u16), b: ti.types.vector(10, ti.u
                 ret = 1
     return ret
 
-@ti.func 
+@ti.real_func 
 def mul_u128_u16impl_82(a: ti.types.vector(10, ti.u16),
-                        b: ti.types.vector(10, ti.u16)):
+                        b: ti.types.vector(10, ti.u16)) -> ti.types.vector(10, ti.u16):
     result = ti.Vector([0]*10, ti.u16)
     
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for i in range(8):
         # ti.loop_config(serialize=True)
         for j in range(2):
@@ -398,14 +414,14 @@ def mul_u128_u16impl_82(a: ti.types.vector(10, ti.u16),
     
     return result
 
-@ti.func 
+@ti.real_func 
 def extend_by_digit(q: ti.types.vector(10, ti.u16),
-                    q_hat: ti.types.vector(10, ti.u16)):
+                    q_hat: ti.types.vector(10, ti.u16)) -> ti.types.vector(10, ti.u16):
     ret = ti.Vector([0]*10, ti.u16)
     ret[0] = q_hat[0]
     
     carry = ti.u32(q_hat[1])
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for i in range(9):
         tmp = ti.u32(q[i]) + carry
         tmp_hi = tmp >> 16
@@ -416,12 +432,12 @@ def extend_by_digit(q: ti.types.vector(10, ti.u16),
     
     return ret
 
-@ti.func 
-def sub_u128_u16impl(a: ti.types.vector(10, ti.u16), b: ti.types.vector(10, ti.u16)):
+@ti.real_func 
+def sub_u128_u16impl(a: ti.types.vector(10, ti.u16), b: ti.types.vector(10, ti.u16)) -> ti.types.vector(10, ti.u16):
     ret = ti.Vector([0]*10, ti.u16)
     
     carry = 0
-    # ti.loop_config(serialize=True)
+    ti.loop_config(serialize=True)
     for i in range(10):
         tmp = ti.i32(a[i]) - carry - ti.i32(b[i])
         
@@ -434,9 +450,9 @@ def sub_u128_u16impl(a: ti.types.vector(10, ti.u16), b: ti.types.vector(10, ti.u
     
     return ret
 
-@ti.func
+@ti.real_func
 def divmod_u128(a: ti.types.vector(6, ti.u32), 
-                b: ti.types.vector(6, ti.u32)):
+                b: ti.types.vector(6, ti.u32)) -> (vec_6, vec_6, ti.i32):
     zero_devision = True
     for i in range(4):
         if b[i]:

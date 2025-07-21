@@ -14,14 +14,20 @@ from typing import get_type_hints
 import float192 as ty
 
 def resolve_annotation(anotation_node, globals_dict):
-    if isinstance(anotation_node, ast.Name): #example: f192_t
-        return eval(anotation_node.id, globals_dict)
-    elif isinstance(anotation_node, ast.Call): #example: ti.types.ndarray(dtype=f192_t, ndim = 3)
-        src = ast.unparse(anotation_node)
-        return eval(src, globals_dict).dtype
-    elif isinstance(anotation_node, ast.Attribute): #example: float192.f192_t
-        src = ast.unparse(anotation_node)
-        return eval(src, globals_dict)
+    try:
+        if isinstance(anotation_node, ast.Name): #example: f192_t
+            return eval(anotation_node.id, globals_dict)
+        elif isinstance(anotation_node, ast.Call): #example: ti.types.ndarray(dtype=f192_t, ndim = 3)
+            src = ast.unparse(anotation_node)
+            return eval(src, globals_dict).dtype
+        elif isinstance(anotation_node, ast.Attribute): #example: float192.f192_t
+            src = ast.unparse(anotation_node)
+            return eval(src, globals_dict)
+        # elif isinstance(anotation_node, ast.List): #example: [f192_t, f192_t]
+        #     lst = [resolve_annotation(node, globals_dict) for node in anotation_node.elts]
+        #     return lst
+    except:
+        pass
     return None
 
 def replace_type_annotation(node, replacements):
@@ -45,7 +51,9 @@ class TypeAnnotator(ast.NodeVisitor):
         self.env = {}  # variable name -> type descriptor
         self.globals_dict = globals_dict if globals_dict is not None else globals()
         self.known_return_types = {
-            'f192': ty.f192_t
+            'f192': ty.f192_t,
+            'f32_to_f192': ty.f32_to_f192,
+            'i32_to_f192': ty.i32_to_f192
         }
 
     def visit_FunctionDef(self, node):
@@ -58,13 +66,13 @@ class TypeAnnotator(ast.NodeVisitor):
             node.inferred_type = resolve_annotation(node.returns, self.globals_dict)
         self.generic_visit(node)
 
-    def visit_AnnAssign(self, node):
-        if isinstance(node.target, ast.Name):
-            var_name = node.target.id
-            t = resolve_annotation(node.annotation, self.globals_dict)
-            self.env[var_name] = t
-            node.inferred_type = t
-        self.generic_visit(node)
+    # def visit_AnnAssign(self, node):
+    #     if isinstance(node.target, ast.Name):
+    #         var_name = node.target.id
+    #         t = resolve_annotation(node.annotation, self.globals_dict)
+    #         self.env[var_name] = t
+    #         node.inferred_type = t
+    #     self.generic_visit(node)
 
     def visit_Assign(self, node):
         self.visit(node.value)
@@ -73,9 +81,29 @@ class TypeAnnotator(ast.NodeVisitor):
             if isinstance(target, ast.Name) and inferred:
                 self.env[target.id] = inferred
                 target.inferred_type = inferred
+            elif isinstance(target, ast.Tuple) and inferred:
+                assert isinstance(inferred, list), 'Tuple unpack assign must be annotated with a list of types e.g. [f192_t, f192_t]'
+                for elt, it in zip(target.elts, inferred):
+                    if isinstance(elt, ast.Name):
+                        self.env[elt.id] = it
+                        elt.inferred_type = it
+                    elif isinstance(elt, ast.Attribute):
+                        elt_id = ast.unparse(elt)
+                        self.env[elt_id] = it
+                        elt.inferred_type = it
+            elif isinstance(target, ast.Attribute) and inferred:
+                target_id = ast.unparse(target)
+                self.env[target_id] = inferred
+                target.inferred_type = inferred
 
     def visit_Name(self, node):
         t = self.env.get(node.id)
+        if t:
+            node.inferred_type = t
+    
+    def visit_Attribute(self, node):
+        node_id = ast.unparse(node)
+        t = self.env.get(node_id)
         if t:
             node.inferred_type = t
 
@@ -111,6 +139,9 @@ class TypeAnnotator(ast.NodeVisitor):
         if isinstance(node.value, ast.Name):
             base = node.value.id
             node.inferred_type = self.env.get(base)
+        elif isinstance(node.value, ast.Attribute):
+            base = ast.unparse(node.value)
+            node.inferred_type = self.env.get(base)
 
     def visit_BinOp(self, node):
         self.visit(node.left)
@@ -120,8 +151,8 @@ class TypeAnnotator(ast.NodeVisitor):
         if ltype == rtype and ltype is not None:
             node.inferred_type = ltype
 
-class BinOpTransformer(ast.NodeTransformer):
-    def __init__(self, target_type, op_map):
+class Transformer(ast.NodeTransformer):
+    def __init__(self, target_type, op_map, cmp_map):
         """
         target_type: the type (like U256()) to match against.
         op_map: mapping of ast operator class → replacement function name.
@@ -129,6 +160,7 @@ class BinOpTransformer(ast.NodeTransformer):
         """
         self.target_type = target_type
         self.op_map = op_map
+        self.cmp_map = cmp_map
 
     def visit_BinOp(self, node):
         self.generic_visit(node)
@@ -152,67 +184,52 @@ class BinOpTransformer(ast.NodeTransformer):
             return new_node
 
         return node
+    
+    def visit_Compare(self, node):
+        assert len(node.ops) == 1, "Chained comparisons not supported for f192"
+        
+        op = node.ops[0]
+        left = self.visit(node.left)
+        right = self.visit(node.comparators[0])
+        
+        ltype = getattr(left, 'inferred_type', None)
+        rtype = getattr(right, 'inferred_type', None)
+        op_type = type(op)
+        
+        if ltype == self.target_type and rtype == self.target_type and op_type in self.cmp_map:
+            func_name = self.cmp_map[op_type].__name__
 
-class AnnotationTransformer(ast.NodeTransformer):
-    def __init__(self, replacements):
-        # Dict like: {'U256': ast.parse("ti.types.vector(8, ti.u32)").body[0].value}
-        self.replacements = replacements
+            new_node = ast.Call(
+                func=ast.Attribute(
+                    value=ast.Name(id='ty', ctx=ast.Load()),
+                    attr=func_name,
+                    ctx=ast.Load()),
+                args=[left, right],
+                keywords=[]
+            )
+            new_node.inferred_type = bool
+            return new_node
 
-    def visit_FunctionDef(self, node):
-        for arg in node.args.args:
-            if arg.annotation:
-                arg.annotation = replace_type_annotation(arg.annotation, self.replacements)
-        if node.returns:
-            node.returns = replace_type_annotation(node.returns, self.replacements)
         return node
+        
 
-    def visit_AnnAssign(self, node):
-        if node.annotation:
-            node.annotation = replace_type_annotation(node.annotation, self.replacements)
-        return node
-
-class LoopDepthAnnotator(ast.NodeVisitor):
-    def __init__(self):
-        self.loop_depth = 0
-
-    def generic_visit(self, node):
-        node.loop_depth = self.loop_depth  # annotate every node
-        super().generic_visit(node)
-
-    def visit_For(self, node):
-        node.loop_depth = self.loop_depth
-        self.loop_depth += 1
-        self.generic_visit(node)
-        self.loop_depth -= 1
-
-    # Optional: explicitly mark while loops as non-parallel
-    def visit_While(self, node):
-        node.loop_depth = self.loop_depth
-        self.generic_visit(node)
-
-def remove_decorator(decorator_list, deco_str):
-    new_list = []
-    for node in decorator_list:
-        node_name = ast.unparse(node)
-        if not node_name == deco_str:
-            new_list.append(node)
-    return new_list
-
-
-
-def supports_f192(globals_dict):
+def supports_f192(globals_dict, verbose=False):
     def supports_f192_base(fn):
-        transformer = BinOpTransformer(ty.f192_t, {ast.Add: ty.add_f192,
-                                                   ast.Sub: ty.sub_f192,
-                                                   ast.Mult: ty.mul_f192,
-                                                   ast.Div: ty.div_f192})
+        transformer = Transformer(ty.f192_t, 
+                                  {ast.Add: ty.add_f192,
+                                   ast.Sub: ty.sub_f192,
+                                   ast.Mult: ty.mul_f192,
+                                   ast.Div: ty.div_f192},
+                                  {ast.Gt: ty.gt_f192,
+                                   ast.Lt: ty.lt_f192,
+                                   ast.Eq: ty.eq_f192,
+                                   ast.GtE: ty.ge_f192,
+                                   ast.LtE: ty.le_f192})
         annotator = TypeAnnotator(globals_dict)
-        ann_swap = AnnotationTransformer({'f192_t': ast.parse("ti.types.vector(6, ti.u32)").body[0].value})
         
         source = textwrap.dedent(inspect.getsource(fn))
         tree = ast.parse(source)
         annotator.visit(tree)
-        ann_swap.visit(tree)
         
         tree.body[0].decorator_list = []
 
@@ -236,6 +253,9 @@ import float192 as ty
         with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
             f.write(imports + transformed_source)
             temp_path = f.name
+            
+            if verbose:
+                print(imports + transformed_source)
 
         # Load as Python module
         spec = importlib.util.spec_from_file_location("temp_module", temp_path)
