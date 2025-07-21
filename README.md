@@ -70,29 +70,24 @@ Implements basic arithmetic operations:
 * Multiplication
 * Division
 
-Other operations (e.g., comparisons, trigonometric functions) are **not implemented**.
+And also implements comparisons, other operations (e.g. trigonometric functions and other mathematical functions) are **not implemented**. It also implements a few convinience features, converting f192 to f32 and creating new f192 from i32 or f32, a pure python implementation of converting string to f192 is also included (this of course cannot be run inside the Taichi scope, since that doesn't support strings).
 
 ### `ast_transformer.py`
 
 Implements a simple type annotator and BinOpTransformer for swapping binary operators like:
 
-```
-a+b -> float192.add_f192(a, b)
-```
+    a+b -> float192.add_f192(a, b)
+This is a key component of this modul since Taichi itself doesnt allow operator overloading, but I do not guarantee that it works in every possible scenario (and any error steming from here will throw obscure errors), however, the basic use cases are covered.
 
 ---
 
 ## Performance & Extendability
 
-While it's technically possible to extend this to even higher-precision floats, **Taichi's long compilation times** already make this module impractical for serious performance use. Still, it stands as a **proof of concept** for implementing custom operator overloading in Taichi.
+This module can be extended to support multiple even higher precisions (and might be done in the future), with the code being created dynamically at runtime. An initial issue was Taichi's compilation time bloat, but after some digging I fould the solution: ti.real_func, which was added kind of silently to Taichi at 1.7 and lets the functions being compiled separately therefore avoiding the massive compilation time bloat coming from inlining a lot of nested functions inside the kernel. Theoretically a 128 bit mantissa gives a precision of around 38 significant digits with the cost of an almost negligable amount of inconvinience and a theoretically estimated 10-20 times slowdown to that of 32 bit floats (this might be higher, I haven't yet benchmarked it).
 
 ---
 
 ## Testing
 
-See `full_test.py` for an example usage and test suite.
-This file was used during development and should be sufficient for basic correctness validation, though **minor bugs may still be present**.
+See `full_test.py` for an example usage and test suite, this file was used during development and should be sufficient for basic correctness validation, though **minor bugs may still be present** (I specifically expect the division to be buggy at resolutions where the standard f32 would fail due to zero division, otherwise it should be fine). A nicer test is shown in `mandelbrot test.py` which calculates a small part of the mandelbrot fractal zoomed at such an extent where regular float64 would have visible granularity due to rounding errors in the pixel positions. 
 
----
-
-Let me know if you'd like a badge section or installation instructions added as well.
